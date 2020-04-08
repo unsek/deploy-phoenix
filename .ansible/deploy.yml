@@ -64,11 +64,12 @@
         path: /home/{{username}}/.profile
         insertbefore: BOF
         block: |
-          export DATABASE_URL=$db_url
-          export SECRET_KEY_BASE=$secret_key
+          export DATABASE_URL={{db_url}}
+          export SECRET_KEY_BASE={{secret_key}}
 
     - name: "Source .profile"
       shell: . /home/{{username}}/.profile
+      become_user: deploy
 
     - name: Copy release tar to remote host
       synchronize:
@@ -97,10 +98,14 @@
         path: "{{archive_path}}/{{app_name}}"
         state: absent
 
-    # - name: Run migrations
-    #   shell: "{{app_path}}/bin/{{app_name}} eval \"{{app_module_name}}.Release.migrate\""
-    #   become_user: "{{username}}"
+    - name: Run migrations
+      command: "{{app_path}}/bin/{{app_name}} eval \"{{app_module_name}}.Release.migrate\""
+      become: true
+      become_method: sudo
+      become_flags: "su - {{ username }} -c"
 
-    # - name: Start app in background
-    #   shell: "{{app_path}}/bin/{{app_name}} daemon"
-    #   become_user: "{{username}}"
+    - name: Start app in background
+      command: "{{app_path}}/bin/{{app_name}} daemon"
+      become: true
+      become_method: sudo
+      become_flags: "su - {{ username }} -c"
