@@ -5,6 +5,6 @@ defmodule PhoenixHello.Repo do
     pool_size: 22
 
     def init(_type, config) do
-      {:ok, Keyword.put(config, :url, System.get_env("DATABASE_URL"))}  
+      {:ok, Keyword.put(config, :url, System.fetch_env!("DATABASE_URL"))}
     end
 end

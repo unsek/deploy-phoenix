@@ -1,0 +1,106 @@
+---
+- hosts: "localhost"
+
+  tasks:
+    - name: Compress build directory
+      archive:
+        path: ../_build
+        dest: ../_build.tar.gz
+        format: gz
+
+- hosts: app
+  become: yes
+
+  vars:
+    - build_path: "/home/{{username}}/_build"
+    - release_path: "/home/{{username}}/_build/prod/rel"
+    - app_path: "{{release_path}}/{{app_name}}"
+    - archive_path: "/home/{{username}}/archives"
+
+  pre_tasks:
+    - stat:
+        path: "{{app_path}}/bin/{{app_name}}"
+      register: app_bin
+
+    - stat:
+        path: "{{archive_path}}"
+      register: archive_folder
+
+    - name: Create archive directory
+      file:
+        path: "{{archive_path}}"
+        state: directory
+        mode: 0777
+        owner: "{{username}}"
+        group: "{{username}}"
+      when: archive_folder.stat.islnk is not defined
+
+    - stat:
+        path: "{{archive_path}}/{{app_name}}"
+      register: tmp_app
+
+    - name: Stop app from running
+      shell: "{{app_path}}/bin/{{app_name}} stop"
+      when: app_bin.stat.islnk is defined
+      ignore_errors: yes
+
+    - name: Remove existing builds
+      file:
+        path: "{{build_path}}"
+        state: absent
+
+    - name: Create temporary app archive folder
+      file:
+        path: "/home/{{username}}/archives/{{app_name}}"
+        state: directory
+        mode: 0777
+        owner: "{{username}}"
+        group: "{{username}}"
+      when: tmp_app.stat.islnk is not defined
+
+  tasks:
+    - name: Add environment variables to .profile
+      blockinfile:
+        path: /home/{{username}}/.profile
+        insertbefore: BOF
+        block: |
+          export DATABASE_URL=$db_url
+          export SECRET_KEY_BASE=$secret_key
+
+    - name: "Source .profile"
+      shell: . /home/{{username}}/.profile
+
+    - name: Copy release tar to remote host
+      synchronize:
+        src: ../_build.tar.gz
+        dest: "{{archive_path}}/{{app_name}}/_build.tar.gz"
+
+    - name: Set permissions
+      file:
+        path: "{{archive_path}}/{{app_name}}/_build.tar.gz"
+        owner: "{{username}}"
+        group: "{{username}}"
+        mode: 0777
+
+    - name: Untar build release
+      unarchive:
+        src: "{{archive_path}}/{{app_name}}/_build.tar.gz"
+        dest: "/home/{{username}}"
+        mode: 0777
+        remote_src: yes
+        owner: "{{username}}"
+        group: "{{username}}"
+      become_user: "{{username}}"
+
+    - name: Delete app archive directory
+      file:
+        path: "{{archive_path}}/{{app_name}}"
+        state: absent
+
+    # - name: Run migrations
+    #   shell: "{{app_path}}/bin/{{app_name}} eval \"{{app_module_name}}.Release.migrate\""
+    #   become_user: "{{username}}"
+
+    # - name: Start app in background
+    #   shell: "{{app_path}}/bin/{{app_name}} daemon"
+    #   become_user: "{{username}}"

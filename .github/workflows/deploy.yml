@@ -1,0 +1,56 @@
+name: CD
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: |
+        git fetch --prune --unshallow
+
+    - name: Set up Python 3.7
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.7
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ansible==2.9.2 requests
+
+    - name: Setup Elixir
+      uses: actions/setup-elixir@v1.2.0
+      with:
+        elixir-version: 1.10.2
+        otp-version: 22.3
+
+    - name: Set SSH key
+      env:
+        DO_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        mkdir ~/.ssh
+        echo "$DO_SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    - name: Build release file
+      run: |
+        ./build.sh
+
+    - name: Run deploy playbook
+      env:
+        app_name: ${{ secrets.APP_NAME }}
+        prod_host_ip: ${{ secrets.PROD_HOST }}
+        app_module_name: ${{ secrets.APP_MODULE_NAME }}
+        username: ${{ secrets.USERNAME }}
+        secret_key: ${{ secrets.SECRET_KEY_BASE }}
+        db_url: ${{ secrets.DATABASE_URL }}
+      run: |
+        cd .ansible
+        touch hosts
+        echo -e "[app]\n$prod_host_ip ansible_user=deploy" >> hosts
+        ansible-playbook --inventory=hosts deploy.yml --extra-vars "secret_key=$secret_key db_url=$db_url app_name=$app_name prod_host_ip=$prod_host_ip app_module_name=$app_module_name username=$username"
